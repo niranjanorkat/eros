@@ -9,7 +9,7 @@ I can be a forgetful person — especially when it comes to the small but import
 The idea had been floating around for a while, but it all came together after I read [Geoffrey Litt’s post](https://www.geoffreylitt.com/2025/04/12/how-i-made-a-useful-ai-assistant-with-one-sqlite-table-and-a-handful-of-cron-jobs). That gave me the push to actually build it.
 
 ## Installation  
-1. Make sure Ollama is up and running  
+1. Install [Ollama](https://github.com/ollama/ollama)  
 2. `pip install -r requirements.txt`  
 3. Run with `python eros.py <command>
 
