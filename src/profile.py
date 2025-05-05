@@ -32,4 +32,4 @@ def export_profile_to_pdf(text, filename):
     pdf.set_font("Helvetica", size=12)
     pdf.multi_cell(0, 10, text)
     pdf.output(filename)
-    print(f"✅ Exported to {filename}")
+    print(f"Exported to {filename}")

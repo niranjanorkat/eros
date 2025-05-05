@@ -1,17 +1,24 @@
-import readline  # for better input UX
-from .vector import get_vector_client, get_embedding_function
 from langchain_ollama import OllamaLLM
-
-LLM_MODEL = "llama3.2"
-COLLECTION_NAME = "eros-logs"
+from .vector import get_vector_client, get_embedding_function
+from src.constants import LLM_MODEL, COLLECTION_NAME, CONTEXT_N
 
 
 def query_rag(question, collection):
-    results = collection.query(query_texts=[question], n_results=3)
+    results = collection.query(query_texts=[question], n_results=CONTEXT_N)
     retrieved = results["documents"][0] if results["documents"] else []
     context = "\n".join(retrieved) if retrieved else "No relevant context found."
 
-    prompt = f"Context:\n{context}\n\nQuestion: {question}\nAnswer:"
+    prompt = f"""Use only the context below to answer the question.
+
+    - If the answer is explicitly present, state it directly.
+    - If the answer requires combining multiple ideas, respond with a concise summary.
+    - If the context lacks enough information to make a reasonable inference, respond with “I don’t know.”
+
+    Context:
+    {context}
+
+    Question: {question}
+    Answer:"""
     llm = OllamaLLM(model=LLM_MODEL)
     return llm.invoke(prompt)
 

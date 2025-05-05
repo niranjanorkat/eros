@@ -3,17 +3,19 @@ import json
 import re
 import chromadb
 from langchain_ollama import OllamaEmbeddings
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+import re
+from src.constants import (
+    LOG_DIR,
+    CHROMA_DIR,
+    MEMORY_PATH,
+    EMBEDDING_MODEL,
+    COLLECTION_NAME,
+)
 
-# === Constants ===
-DATA_DIR = "data"
-LOG_DIR = os.path.join(DATA_DIR, "logs")
-CHROMA_DIR = os.path.join(DATA_DIR, "chroma")
-MEMORY_PATH = os.path.join(DATA_DIR, "memory")
-LLM_MODEL = "llama3.2"
-COLLECTION_NAME = "eros-logs"
 
-
-# === Embedding Wrapper ===
+# Chroma Helpers
 class ChromaDBEmbeddingFunction:
     def __init__(self, langchain_embeddings):
         self.langchain_embeddings = langchain_embeddings
@@ -24,10 +26,9 @@ class ChromaDBEmbeddingFunction:
         return self.langchain_embeddings.embed_documents(input)
 
 
-# === Helpers ===
 def get_embedding_function():
     return ChromaDBEmbeddingFunction(
-        OllamaEmbeddings(model=LLM_MODEL, base_url="http://localhost:11434")
+        OllamaEmbeddings(model=EMBEDDING_MODEL, base_url="http://localhost:11434")
     )
 
 
@@ -35,6 +36,7 @@ def get_vector_client():
     return chromadb.PersistentClient(path=CHROMA_DIR)
 
 
+# Memory Config Helpers
 def read_memory():
     mem = {}
     if os.path.exists(MEMORY_PATH):
@@ -60,10 +62,62 @@ def get_unsynced_logs(last_n):
     return [f for f in files if int(re.findall(r"log-(\d+)", f)[0]) > last_n]
 
 
-# === Main Sync Function ===
-def update_vector_db():
+def semantic_chunk_log_text(text, buffer_size=1, percentile_threshold=95):
+    """
+    Semantic chunking logic adapted from Greg Kamradt's work:
+    https://github.com/FullStackRetrieval-com/RetrievalTutorials/blob/main/5_Levels_Of_Text_Splitting.ipynb
+    """
+
+    sentences = [
+        s.strip() for s in re.split(r"(?<=[.?!])\s+", text.strip()) if s.strip()
+    ]
+    if len(sentences) <= 2:
+        return [text]
+
+    # Combine with buffer in one pass
+    combined_sentences = []
+    for i in range(len(sentences)):
+        start = max(0, i - buffer_size)
+        end = min(len(sentences), i + buffer_size + 1)
+        combined = " ".join(sentences[start:end])
+        combined_sentences.append(combined)
+
+    # Embed combined chunks
+    embed_fn = get_embedding_function()
+    embeddings = embed_fn(combined_sentences)
+
+    # Compute distances
+    distances = [
+        1 - cosine_similarity([embeddings[i]], [embeddings[i + 1]])[0][0]
+        for i in range(len(embeddings) - 1)
+    ]
+    if not distances:
+        return [text]
+
+    # Threshold and breakpoints
+    threshold = np.percentile(distances, percentile_threshold)
+    breakpoints = [i for i, d in enumerate(distances) if d > threshold]
+
+    # Form chunks
+    chunks = []
+    start_idx = 0
+    for idx in breakpoints:
+        end_idx = idx + 1
+        chunk = " ".join(sentences[start_idx:end_idx])
+        if chunk:
+            chunks.append(chunk)
+        start_idx = end_idx
+    if start_idx < len(sentences):
+        final_chunk = " ".join(sentences[start_idx:])
+        if final_chunk:
+            chunks.append(final_chunk)
+
+    return chunks
+
+
+def update_vector_db(reinitialized=False):
     memory = read_memory()
-    last_n = int(memory["LAST_LOG"]) if "LAST_LOG" in memory else 1
+    last_n = 0 if reinitialized else int(memory.get("LAST_LOG", 0))
     files_to_update = get_unsynced_logs(last_n)
 
     if not files_to_update:
@@ -71,6 +125,13 @@ def update_vector_db():
         return
 
     chroma_client = get_vector_client()
+    if reinitialized:
+        try:
+            chroma_client.delete_collection(name=COLLECTION_NAME)
+            print("Old collection deleted.")
+        except:
+            pass
+
     collection = chroma_client.get_or_create_collection(
         name=COLLECTION_NAME, embedding_function=get_embedding_function()
     )
@@ -80,12 +141,17 @@ def update_vector_db():
         with open(path, "r") as f:
             logs = json.load(f)
 
-        for i, log in enumerate(logs):
-            doc_id = f"{file}-{i}"
-            text = log["text"]
-            collection.add(documents=[text], ids=[doc_id], metadatas=[{"source": file}])
+        combined_text = " ".join(log["text"] for log in logs)
 
-        print(f"Pushed {file} to Chroma.")
+        chunks = semantic_chunk_log_text(combined_text, buffer_size=3)
+
+        for j, chunk in enumerate(chunks):
+            doc_id = f"{file}-{j}"
+            collection.add(
+                documents=[chunk], ids=[doc_id], metadatas=[{"source": file}]
+            )
+
+        print(f"Added {file} to Vector Database.")
 
     latest_n = max(int(re.findall(r"log-(\d+)", f)[0]) for f in files_to_update)
     memory["LAST_LOG"] = str(latest_n)

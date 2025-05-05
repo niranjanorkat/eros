@@ -9,15 +9,16 @@ def main():
     parser = argparse.ArgumentParser(description="Eros CLI - Personal RAG Logger")
     subparsers = parser.add_subparsers(dest="command")
 
-    # Add log command
     add_parser = subparsers.add_parser("add", help="Add a log")
     add_parser.add_argument("text", nargs="?", help="Log text")
     add_parser.add_argument(
         "--continuous", action="store_true", help="Enter multiline input mode"
     )
 
-    # Update vector DB command
-    subparsers.add_parser("update", help="Sync new logs to vector DB")
+    update_parser = subparsers.add_parser("update", help="Sync new logs to vector DB")
+    update_parser.add_argument(
+        "--init", action="store_true", help="Reinitialize from log-1.json"
+    )
 
     query_parser = subparsers.add_parser("query", help="Ask a question")
     query_parser.add_argument("text", nargs="?", help="Question")
@@ -26,7 +27,9 @@ def main():
     )
 
     profile_parser = subparsers.add_parser("profile", help="Generate profile summary")
-    profile_parser.add_argument("--export", action="store_true", help="Export as PDF")
+    profile_parser.add_argument(
+        "--export", type=str, help="Export summary to a PDF file"
+    )
 
     args = parser.parse_args()
 
@@ -35,11 +38,8 @@ def main():
             add_log_continuous()
         elif args.text:
             add_log(args.text)
-        else:
-            print("Error: Provide text or use --continuous.")
-            exit(1)
     elif args.command == "update":
-        update_vector_db()
+        update_vector_db(reinitialized=args.init)
     elif args.command == "query":
         if args.continuous:
             query_continuous()
@@ -50,7 +50,7 @@ def main():
         if args.export:
             export_profile_to_pdf(summary, args.export)
         else:
-            print(f"\n📝 Summary:\n{summary}\n")
+            print(f"\nSummary:\n{summary}\n")
     else:
         parser.print_help()
 
