@@ -3,6 +3,9 @@ Eros is a private, local AI memory to help you remember the little things about 
 
 It combines a Retrieval-Augmented Generation (RAG) system with an LLM, powered by Ollama, LangChain, and Chroma.
 
+Shoutout to Greg Kamradt for the semantic chunking approach, adapted from his work:
+https://github.com/FullStackRetrieval-com/RetrievalTutorials/blob/main/tutorials/LevelsOfTextSplitting/5_Levels_Of_Text_Splitting.ipynb
+
 ## Backstory  
 I can be a forgetful person — especially when it comes to the small but important details about people I'm dating. So I built Eros: a personal memory system to help me log what they say, what they like, and what I should probably remember.
 
